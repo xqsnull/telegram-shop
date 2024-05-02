@@ -25,7 +25,6 @@ def welcome(message):
 
 last_message_id = None
 @bot.callback_query_handler(func=lambda call: True)
-@bot.callback_query_handler(func=lambda call: True)
 def handle_inline_callback(call):
     global last_message_id
 
