@@ -27,8 +27,11 @@ def welcome(message):
         bot.send_message(message.chat.id, f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
 
 last_message_id = None
+<<<<<<< HEAD
 
 # Функция для обработки нажатий кнопок
+=======
+>>>>>>> 4b921d761b5e2d60ae7a3f55d3d215c8434cb1b8
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline_callback(call):
     global last_message_id
