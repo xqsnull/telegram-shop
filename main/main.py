@@ -1,12 +1,8 @@
-import random
-import stripe
 import cfg
 import time
 import telebot
 from telebot import types
 from telebot.types import InputMediaPhoto
-
-stripe.api_key = "284685063:TEST:ODZlMzlhYmVmMjdj"
 
 bot = telebot.TeleBot(cfg.token)
 
@@ -15,21 +11,38 @@ user_basket = {}
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-
-    shop = types.InlineKeyboardButton('Магазин.', callback_data='shop')
-    faq = types.InlineKeyboardButton('FAQ.', callback_data='faq')
-    about = types.InlineKeyboardButton('О нас.', callback_data='about')
-    basket = types.InlineKeyboardButton('Корзина', callback_data='basket')
-
-    markup.add(shop, faq, about, basket)
-
+    #admin zone
     global last_message_id
-    photo_path = 'static/welcome_img.png'
-    if last_message_id:
-        bot.edit_message_media(chat_id=message.chat.id, message_id=last_message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?'), reply_markup=markup)
+    if message.chat.id == 1638573890:
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        shop = types.InlineKeyboardButton('Магазин.', callback_data='shop')
+        faq = types.InlineKeyboardButton('FAQ.', callback_data='faq')
+        about = types.InlineKeyboardButton('О нас.', callback_data='about')
+        basket = types.InlineKeyboardButton('Корзина', callback_data='basket')
+        admin = types.InlineKeyboardButton('Админка', callback_data='admin')
+        markup.add(shop, faq, about, basket, admin)
+        photo_path = 'static/welcome_img.png'
+        if last_message_id:
+            bot.edit_message_media(chat_id=message.chat.id, message_id=last_message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?'), reply_markup=markup)
+        else:
+            bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
+        
+
     else:
-        bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
+        markup = types.InlineKeyboardMarkup(row_width=2)
+
+        shop = types.InlineKeyboardButton('Магазин.', callback_data='shop')
+        faq = types.InlineKeyboardButton('FAQ.', callback_data='faq')
+        about = types.InlineKeyboardButton('О нас.', callback_data='about')
+        basket = types.InlineKeyboardButton('Корзина', callback_data='basket')
+
+        markup.add(shop, faq, about, basket)
+
+        photo_path = 'static/welcome_img.png'
+        if last_message_id:
+            bot.edit_message_media(chat_id=message.chat.id, message_id=last_message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?'), reply_markup=markup)
+        else:
+            bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
 
 last_message_id = None
 
@@ -63,7 +76,7 @@ def handle_inline_callback(call):
     elif call.data in cfg.all_items:
         add_to_cart(call)
         msg = bot.send_message(call.message.chat.id, f'Товар "{call.data}" был добавлен в корзину.')
-        time.sleep(3)
+        time.sleep(1)
         try:
             bot.delete_message(call.message.chat.id, msg.message_id)
         except Exception as e:
@@ -114,9 +127,6 @@ def add_to_cart(call):
 
 def clear_basket(call):
     user_basket.clear()
-    # sent_message = bot.send_message(call.message.chat.id, 'Корзина была полностью очищена.')
-    # time.sleep(1)  
-    # bot.delete_message(call.message.chat.id, sent_message.message_id)
 
 def calculate_total():
     total = sum(cfg.all_items[item] for item in user_basket)
@@ -141,7 +151,7 @@ def show_basket(message):
         for item, price in user_basket.items():
             basket_text += f"{item}: {price}\n"
             total_price += price
-        basket_text += f"\nИтого: {total_price} рублей"
+        basket_text += f"\nСумма: {total_price} рублей"
         photo_path = 'static/full_cart_img.png'
         bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=basket_text), reply_markup=markup)
 
@@ -198,7 +208,7 @@ def fortnite_bundle_shop(message):
     bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'), reply_markup=markup)
 
 def dsc_for_payment() -> str:
-    basket_text = "Ваша корзина:\n"
+    basket_text = "\n"
     for item, price in user_basket.items():
         basket_text += f"{item}: {price}\n"
 
@@ -208,10 +218,10 @@ def create_telegram_payment(message):
     total_price = types.LabeledPrice(label='Оплатить товар(ы)', amount=calculate_total()*100)
 
     if cfg.payment_provider_token.split(':')[1] == 'TEST':
-        print('test')
+        print('test pay')
     
     bot.send_invoice(message.chat.id,
-                    title='Оплата товаров',
+                    title='xenoqs shop',
                     description=dsc_for_payment(),
                     provider_token=cfg.payment_provider_token,
                     prices=[total_price],  # Преобразуем total_price в список
@@ -225,5 +235,46 @@ def pay(message):
     create_telegram_payment(message)
 
     last_message_id = message.message_id  # Обновляем последний ID сообщения
+
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def pre_checkout(query: types.PreCheckoutQuery):
+    bot.answer_pre_checkout_query(query.id, ok=True)
+
+
+@bot.message_handler(content_types=['successful_payment'])
+def successful_payment(message: types.Message):
+    print('SUCCESSFUL PAYMENT')
+    
+    # Получение информации о пользователе
+    user_id = message.from_user.id
+    username = message.from_user.username
+    
+    # Создание ссылки на профиль пользователя
+    if username:
+        user_link = f"https://t.me/{username}"
+    else:
+        user_link = f"https://t.me/user?id={user_id}"
+    
+    # Отправка сообщения с информацией об оплате и ссылкой на пользователя
+    total_amount = message.successful_payment.total_amount // 100
+    currency = message.successful_payment.currency
+    bot.send_message(
+        1638573890,
+        f'Оплата на сумму {total_amount} {currency} прошла успешно!\n'
+        f'Ссылка на покупателя: {user_link}')
+    
+# def successful_payment(message: types.Message):
+#     user = message.from_user.first_name
+#     print('SUCCESSFUL PAYMENT')
+#     invoice_payload = message.successful_payment.invoice_payload
+#     if invoice_payload is not None:
+#         print('Invoice Payload:', invoice_payload)
+#         bot.send_message(message.chat.id, f'Оплата на сумму {message.successful_payment.total_amount // 100} {message.successful_payment.currency} прошла успешно!')
+#         bot.send_message(1638573890, f'{user}, ОПЛАТА ПРОШЛА\n\nТОВАРЫ: {dsc_for_payment()}\nСУММА: {calculate_total()}')
+#     else:
+#         bot.send_message(message.chat.id, f'Оплата не прошла')
+#         print('Invoice payload is not available.')
+
+
 
 bot.polling(non_stop=True)
