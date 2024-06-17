@@ -1,5 +1,4 @@
 import sqlite3
-import random
 from cfg import Config
 import time
 import telebot
@@ -30,7 +29,7 @@ def save_order(user_id, username, items, total_amount, currency):
                       VALUES (?, ?, ?, ?, ?)''',
                    (user_id, username, items, total_amount, currency))
     conn.commit()
-    order_id = cursor.lastrowid  # Получаем идентификатор (ID) последней вставленной записи
+    order_id = cursor.lastrowid  # получить айди последней записи
     conn.close()
     return order_id
 
@@ -44,14 +43,13 @@ def get_all_orders():
 
 init_db()
 
-# Словарь для корзины пользователя
+# словарь для корзины пользователя
 user_basket = {}
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
     global last_message_id
 
-    # Создание разметки клавиатуры с кнопками
     markup = types.InlineKeyboardMarkup(row_width=2)
     shop = types.InlineKeyboardButton('Магазин.', callback_data='shop')
     faq = types.InlineKeyboardButton('FAQ.', callback_data='faq')
@@ -60,7 +58,6 @@ def welcome(message):
 
     markup.add(shop, faq, about, basket)
 
-    # Добавляем кнопку "Админка", если пользователь является администратором
     if message.chat.id == Config.admin_chat_id:
         admin = types.InlineKeyboardButton('Админка', callback_data='admin')
         markup.add(admin)
@@ -73,7 +70,7 @@ def welcome(message):
 
 last_message_id = None
 
-# Функция для обработки нажатий кнопок
+# функция для обработки нажтий кнопок
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline_callback(call):
     global last_message_id
@@ -96,7 +93,6 @@ def handle_inline_callback(call):
     
     elif call.data == 'clear_basket':
         clear_basket(call)
-        last_message_id = call.message.message_id
         show_basket(call.message)
         last_message_id = call.message.message_id
 
@@ -194,7 +190,7 @@ def view_orders(message):
 def add_to_cart(call):
     user_basket[call.data] = Config.all_items.get(call.data)
 
-def clear_basket(call):
+def clear_basket():
     user_basket.clear()
 
 def calculate_total():
@@ -277,6 +273,10 @@ def fortnite_bundle_shop(message):
     photo_path = 'static/fortnite_bundle_img.png'
     bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'), reply_markup=markup)
 
+def clear_after_successful_payment(message):
+    clear_basket()
+    welcome(message)
+
 def dsc_for_payment() -> str:
     basket_text = "\n"
     for item, price in user_basket.items():
@@ -286,9 +286,6 @@ def dsc_for_payment() -> str:
 
 def create_telegram_payment(message):
     total_price = types.LabeledPrice(label='Оплатить товар(ы)', amount=calculate_total()*100)
-
-    if Config.payment_provider_token.split(':')[1] == 'TEST':
-        print('test pay')
     
     bot.send_invoice(message.chat.id,
                     title='xenoqs shop',
@@ -301,10 +298,10 @@ def create_telegram_payment(message):
 def pay(message):
     global last_message_id
 
-    # Создание платежной ссылки через Telegram Payments API
+    # Создание платежной ссылки
     create_telegram_payment(message)
 
-    last_message_id = message.message_id  # Обновляем последний ID сообщения
+    last_message_id = message.message_id  # последний айди сообщения
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(query: types.PreCheckoutQuery):
@@ -314,10 +311,10 @@ def pre_checkout(query: types.PreCheckoutQuery):
 def successful_payment(message: types.Message):
     print('SUCCESSFUL PAYMENT')
 
-    # Сохраняем заказ в базу данных и получаем его ID
+    # сохр заказ в базе и получение айдишки 
     order_id = save_order(message.from_user.id, message.from_user.username, dsc_for_payment(), calculate_total(), message.successful_payment.currency)
 
-    # Отправка номера заказа и информации пользователю
+    # Отправка номера заказа и инф в чат с покупатлем
     user_basket_text = dsc_for_payment()
     user_message = (
         f'Оплата прошла успешно!\n'
@@ -327,7 +324,7 @@ def successful_payment(message: types.Message):
     )
     bot.send_message(message.chat.id, user_message)
     
-    # Получение информации о пользователе
+    # Получение информации о человеке
     user_id = message.from_user.id
     username = message.from_user.username
     
@@ -337,7 +334,7 @@ def successful_payment(message: types.Message):
     else:
         user_link = f"https://t.me/user?id={user_id}"
     
-    # Отправка сообщения с информацией об оплате и ссылкой на пользователя
+    # Отправка сообщения можератору
     total_amount = message.successful_payment.total_amount // 100
     currency = message.successful_payment.currency
     moderator_message = (
@@ -346,18 +343,8 @@ def successful_payment(message: types.Message):
         f'Товары: {dsc_for_payment()}\n'
         f'Номер заказа: {order_id}'
     )
-    bot.send_message(1638573890, moderator_message)
+    bot.send_message(Config.admin_chat_id, moderator_message)
+    clear_after_successful_payment(message)
 
-# def successful_payment(message: types.Message):
-#     user = message.from_user.first_name
-#     print('SUCCESSFUL PAYMENT')
-#     invoice_payload = message.successful_payment.invoice_payload
-#     if invoice_payload is not None:
-#         print('Invoice Payload:', invoice_payload)
-#         bot.send_message(message.chat.id, f'Оплата на сумму {message.successful_payment.total_amount // 100} {message.successful_payment.currency} прошла успешно!')
-#         bot.send_message(1638573890, f'{user}, ОПЛАТА ПРОШЛА\n\nТОВАРЫ: {dsc_for_payment()}\nСУММА: {calculate_total()}')
-#     else:
-#         bot.send_message(message.chat.id, f'Оплата не прошла')
-#         print('Invoice payload is not available.')
 
 bot.polling(non_stop=True)
