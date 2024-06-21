@@ -7,7 +7,6 @@ import telebot
 from telebot import types
 from telebot.types import InputMediaPhoto
 
-global callbacks
 bot = telebot.TeleBot(Config.token)
 
 class SQLiteDB:
@@ -55,7 +54,7 @@ db = SQLiteDB()
 
 db.init_db()
 
-# словарь для корзины пользователя (чуть позже переделать добавив в базу данных, так же переделать все что работает с корзиной)
+# словарь для корзины пользователя (чуть позже переделать добавив в базу данных, так же переработать все что работает с корзиной)
 user_basket = {}
 
 @bot.message_handler(commands=['start'])
@@ -205,27 +204,31 @@ def admin_panel(message):
 def view_orders(message):
     global admin_orders_msg_id
 
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    hide_db = types.InlineKeyboardButton('Скрыть заказы', callback_data='del_msg')
-    markup.add(hide_db)
     orders = db.get_all_orders()
     if not orders:
-        bot.send_message(message.chat.id, f'Нет доступных заказов.', reply_markup=markup)
+        no_orders = bot.send_message(message.chat.id, f'Нет доступных заказов.')
+        no_orders_msg_id = no_orders.message_id
+        time.sleep(1.5)
+        bot.delete_message(message.chat.id, no_orders_msg_id)
         return
 
-    orders_text = ""
-    for order in orders:
-        orders_text += (
-            f"Номер заказа: {order[0]}\n"
-            f"ID пользователя: {order[1]}\n"
-            f"Имя пользователя: {order[2]}\n"
-            f"Товары: {order[3]}\n"
-            f"Сумма: {order[4]} {order[5]}\n"
-            f"Дата заказа: {order[6]}\n\n"
-        )
-    admin_orders_msg = f'Всего заказов:\n{orders_text}'
-    send_message = bot.send_message(message.chat.id, admin_orders_msg, reply_markup=markup)
-    admin_orders_msg_id = send_message.message_id
+    else:
+        orders_text = ""
+        for order in orders:
+            orders_text += (
+                f"Номер заказа: {order[0]}\n"
+                f"ID пользователя: {order[1]}\n"
+                f"Имя пользователя: {order[2]}\n"
+                f"Товары: {order[3]}\n"
+                f"Сумма: {order[4]} {order[5]}\n"
+                f"Дата заказа: {order[6]}\n\n"
+            )
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        hide_db = types.InlineKeyboardButton('Скрыть заказы', callback_data='del_msg')
+        markup.add(hide_db)
+        admin_orders_msg = f'Всего заказов:\n{orders_text}'
+        send_message = bot.send_message(message.chat.id, admin_orders_msg, reply_markup=markup)
+        admin_orders_msg_id = send_message.message_id
 
 def add_to_cart(call):
     user_basket[call.data] = Config.all_items.get(call.data)
@@ -336,7 +339,6 @@ def create_telegram_payment(message):
                     currency='rub')
 
 def pay(message):
-    global last_message_id
 
     # Создание платежной ссылки
     create_telegram_payment(message)
@@ -357,7 +359,7 @@ def successful_payment(message: types.Message):
 
     # Отправка номера заказа и инф в чат с покупатлем
     markup = types.InlineKeyboardMarkup(row_width=2)
-    hide_db = types.InlineKeyboardButton('Скрыть заказ)', callback_data='del_user_msg')
+    hide_db = types.InlineKeyboardButton('Скрыть заказ', callback_data='del_user_msg')
     markup.add(hide_db)
 
     user_basket_text = dsc_for_payment()
