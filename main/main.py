@@ -1,3 +1,5 @@
+'''большинство информации о некоторых вещах можно найти в info'''
+
 import sqlite3
 from cfg import Config
 import time
@@ -5,68 +7,94 @@ import telebot
 from telebot import types
 from telebot.types import InputMediaPhoto
 
+global callbacks
 bot = telebot.TeleBot(Config.token)
 
-def init_db():
-    conn = sqlite3.connect('orders.db')
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER,
-                        username TEXT,
-                        items TEXT,
-                        total_amount INTEGER,
-                        currency TEXT,
-                        order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )''')
-    conn.commit()
-    conn.close()
+class SQLiteDB:
+    def __init__(self, db_name='orders.db'):
+        self.db_name = db_name
+        self.conn = sqlite3.connect(self.db_name, check_same_thread=False)
+        self.cursor = self.conn.cursor()
+        self.init_db()
 
-def save_order(user_id, username, items, total_amount, currency):
-    conn = sqlite3.connect('orders.db')
-    cursor = conn.cursor()
-    cursor.execute('''INSERT INTO orders (user_id, username, items, total_amount, currency)
-                      VALUES (?, ?, ?, ?, ?)''',
-                   (user_id, username, items, total_amount, currency))
-    conn.commit()
-    order_id = cursor.lastrowid  # получить айди последней записи
-    conn.close()
-    return order_id
+    def __enter__(self):
+        return self
 
-def get_all_orders():
-    conn = sqlite3.connect('orders.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM orders')
-    orders = cursor.fetchall()
-    conn.close()
-    return orders
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
-init_db()
+    def init_db(self):
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER,
+                                username TEXT,
+                                items TEXT,
+                                total_amount INTEGER,
+                                currency TEXT,
+                                order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )''')
+        self.conn.commit()
 
-# словарь для корзины пользователя
+    def save_order(self, user_id, username, items, total_amount, currency):
+        self.cursor.execute('''INSERT INTO orders (user_id, username, items, total_amount, currency)
+                            VALUES (?, ?, ?, ?, ?)''',
+                            (user_id, username, items, total_amount, currency))
+        self.conn.commit()
+        order_id = self.cursor.lastrowid
+        return order_id
+
+    def get_all_orders(self):
+        self.cursor.execute('SELECT * FROM orders')
+        orders = self.cursor.fetchall()
+        return orders
+
+    def close(self):
+        self.conn.close()
+
+db = SQLiteDB()
+
+db.init_db()
+
+# словарь для корзины пользователя (чуть позже переделать добавив в базу данных, так же переделать все что работает с корзиной)
 user_basket = {}
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
     global last_message_id
 
+    # удаление начального сообщения если новое уже существует
+    if last_message_id:
+        try:
+            bot.delete_message(message.chat.id, last_message_id)
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения: {e}")
+
     markup = types.InlineKeyboardMarkup(row_width=2)
     shop = types.InlineKeyboardButton('Магазин.', callback_data='shop')
     faq = types.InlineKeyboardButton('FAQ.', callback_data='faq')
     about = types.InlineKeyboardButton('О нас.', callback_data='about')
     basket = types.InlineKeyboardButton('Корзина', callback_data='basket')
-
     markup.add(shop, faq, about, basket)
 
+    # кнопка админ зонв для мдератора
     if message.chat.id == Config.admin_chat_id:
         admin = types.InlineKeyboardButton('Админка', callback_data='admin')
         markup.add(admin)
 
     photo_path = 'static/welcome_img.png'
-    if last_message_id:
-        bot.edit_message_media(chat_id=message.chat.id, message_id=last_message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?'), reply_markup=markup)
-    else:
-        bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
+    try:
+        # начальное сообщение
+        sent_message = bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
+        last_message_id = sent_message.message_id 
+    except Exception as e:
+        print(f"Ошибка при отправке приветственного сообщения: {e}")
+    
+    try:
+        time.sleep(0)
+        bot.delete_message(message.chat.id, message.message_id)
+    except Exception as e:
+        print(f"Ошибка при удалении сообщения: {e}")
+
 
 last_message_id = None
 
@@ -134,6 +162,14 @@ def handle_inline_callback(call):
         view_orders(call.message)
         last_message_id = call.message.message_id
 
+    elif call.data == 'del_msg':
+        if admin_orders_msg_id:
+            bot.delete_message(call.message.chat.id, admin_orders_msg_id)
+    
+    elif call.data == 'del_user_msg':
+        if admin_orders_msg_id:
+            bot.delete_message(call.message.chat.id, user_successful_payment_msg_id)
+
     elif call.data == 'back':
         if last_message_id:
             back_markup = types.InlineKeyboardMarkup(row_width=2)
@@ -167,10 +203,12 @@ def admin_panel(message):
     bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Админ меню'), reply_markup=markup)
 
 def view_orders(message):
+    global admin_orders_msg_id
+
     markup = types.InlineKeyboardMarkup(row_width=2)
-    hide_db = types.InlineKeyboardButton('Скрыть заказы', callback_data='del_smg')
+    hide_db = types.InlineKeyboardButton('Скрыть заказы', callback_data='del_msg')
     markup.add(hide_db)
-    orders = get_all_orders()
+    orders = db.get_all_orders()
     if not orders:
         bot.send_message(message.chat.id, f'Нет доступных заказов.', reply_markup=markup)
         return
@@ -185,7 +223,9 @@ def view_orders(message):
             f"Сумма: {order[4]} {order[5]}\n"
             f"Дата заказа: {order[6]}\n\n"
         )
-    bot.send_message(message.chat.id, f'Всего заказов:\n{orders_text}', reply_markup=markup)
+    admin_orders_msg = f'Всего заказов:\n{orders_text}'
+    send_message = bot.send_message(message.chat.id, admin_orders_msg, reply_markup=markup)
+    admin_orders_msg_id = send_message.message_id
 
 def add_to_cart(call):
     user_basket[call.data] = Config.all_items.get(call.data)
@@ -309,12 +349,17 @@ def pre_checkout(query: types.PreCheckoutQuery):
 
 @bot.message_handler(content_types=['successful_payment'])
 def successful_payment(message: types.Message):
+    global user_successful_payment_msg_id
     print('SUCCESSFUL PAYMENT')
 
     # сохр заказ в базе и получение айдишки 
-    order_id = save_order(message.from_user.id, message.from_user.username, dsc_for_payment(), calculate_total(), message.successful_payment.currency)
+    order_id = db.save_order(message.from_user.id, message.from_user.username, dsc_for_payment(), calculate_total(), message.successful_payment.currency)
 
     # Отправка номера заказа и инф в чат с покупатлем
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    hide_db = types.InlineKeyboardButton('Скрыть заказ)', callback_data='del_user_msg')
+    markup.add(hide_db)
+
     user_basket_text = dsc_for_payment()
     user_message = (
         f'Оплата прошла успешно!\n'
@@ -322,7 +367,8 @@ def successful_payment(message: types.Message):
         f'Номер заказа: {order_id}\n'
         f'Скоро с вами свяжится наш модератор: {Config.admin_id}'
     )
-    bot.send_message(message.chat.id, user_message)
+    send_message = bot.send_message(message.chat.id, user_message, reply_markup=markup)
+    user_successful_payment_msg_id = send_message.message_id
     
     # Получение информации о человеке
     user_id = message.from_user.id
@@ -334,7 +380,7 @@ def successful_payment(message: types.Message):
     else:
         user_link = f"https://t.me/user?id={user_id}"
     
-    # Отправка сообщения можератору
+    # Отправка сообщения модератору
     total_amount = message.successful_payment.total_amount // 100
     currency = message.successful_payment.currency
     moderator_message = (
@@ -345,6 +391,5 @@ def successful_payment(message: types.Message):
     )
     bot.send_message(Config.admin_chat_id, moderator_message)
     clear_after_successful_payment(message)
-
 
 bot.polling(non_stop=True)
