@@ -1,4 +1,11 @@
-# Telegram shop
-Used: PyTelegramApi, Sqllite, Python 3.9.10
+# Telegram store
+Used: PyTelegramApi, Sqllite, Python 3.9.10.
 #
-Telegram shop with DB and PAYMENT
+Telegram store with database and PAYMENT
+#
+Folder "static", contains imgs
+#
+Since this is a prototype, there are only two files "main.py" and "cfg.py" in the "main" folder.
+“cfg.py” stores the bot’s personal token and currently goods (in the future they will be stored in db).
+#
+I'll optimize this project in the future.
