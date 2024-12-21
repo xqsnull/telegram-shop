@@ -1,7 +1,7 @@
 # Telegram store
 Used: PyTelegramApi, Sqllite, Python 3.9.10.
 #
-Telegram store with database and PAYMENT
+Telegram store with DB and PAYMENT
 #
 Folder "static", contains imgs
 #
