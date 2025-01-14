@@ -50,12 +50,14 @@ class SQLiteDB:
     def close(self):
         self.conn.close()
 
+
 db = SQLiteDB()
 
 db.init_db()
 
 # словарь для корзины пользователя (чуть позже переделать добавив в базу данных, так же переработать все что работает с корзиной)
 user_basket = {}
+
 
 @bot.message_handler(commands=['start'])
 def welcome(message):
@@ -80,14 +82,16 @@ def welcome(message):
         admin = types.InlineKeyboardButton('Админка', callback_data='admin')
         markup.add(admin)
 
-    photo_path = 'static/welcome_img.png'
+    photo_path = '../static/welcome_img.png'
     try:
         # начальное сообщение
-        sent_message = bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'), caption=f'Привет! {message.from_user.first_name}, Что вас интересует?', reply_markup=markup)
-        last_message_id = sent_message.message_id 
+        sent_message = bot.send_photo(message.chat.id, photo=open(photo_path, 'rb'),
+                                      caption=f'Привет! {message.from_user.first_name}, Что вас интересует?',
+                                      reply_markup=markup)
+        last_message_id = sent_message.message_id
     except Exception as e:
         print(f"Ошибка при отправке приветственного сообщения: {e}")
-    
+
     try:
         time.sleep(0)
         bot.delete_message(message.chat.id, message.message_id)
@@ -97,31 +101,31 @@ def welcome(message):
 
 last_message_id = None
 
-# функция для обработки нажтий кнопок
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline_callback(call):
     global last_message_id
 
-    if call.data == 'shop':
-        shop(call.message)
+    callback_actions = {
+        'shop': shop,
+        'faq': FAQ,
+        'about': about,
+        'basket': show_basket,
+        'clear_basket': lambda: (clear_basket(call), show_basket(call.message)),
+        'fortnite': fortnite_shop,
+        'vbucks': vbucks_shop,
+        'bundle': fortnite_bundle_shop,
+        'pay_callback': pay,
+        'admin': admin_panel,
+        'view_orders': view_orders,
+    }
+
+    if call.data in callback_actions:
+        callback_actions[call.data](call.message)
         last_message_id = call.message.message_id
 
-    elif call.data == 'faq':
-        FAQ(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'about':
-        about(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'basket':
-        show_basket(call.message)
-        last_message_id = call.message.message_id
-    
-    elif call.data == 'clear_basket':
-        clear_basket(call)
-        show_basket(call.message)
-        last_message_id = call.message.message_id
+        if call.data == 'clear_basket':
+            last_message_id = call.message.message_id
 
     elif call.data in Config.all_items:
         add_to_cart(call)
@@ -133,38 +137,14 @@ def handle_inline_callback(call):
             print(f"Error while deleting message: {e}")
         last_message_id = call.message.message_id
 
-    elif call.data == 'fortnite':
-        fortnite_shop(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'vbucks':
-        vbucks_shop(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'bundle':
-        fortnite_bundle_shop(call.message)
-        last_message_id = call.message.message_id
-
     elif call.data == 'valorant':
         bot.send_message(call.message.chat.id, 'Вы выбрали VALORANT.')
         bot.send_message(call.message.chat.id, 'Что дальше?', reply_markup=None)
 
-    elif call.data == 'pay_callback':
-        pay(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'admin':
-        admin_panel(call.message)
-        last_message_id = call.message.message_id
-
-    elif call.data == 'view_orders':
-        view_orders(call.message)
-        last_message_id = call.message.message_id
-
     elif call.data == 'del_msg':
         if admin_orders_msg_id:
             bot.delete_message(call.message.chat.id, admin_orders_msg_id)
-    
+
     elif call.data == 'del_user_msg':
         if admin_orders_msg_id:
             bot.delete_message(call.message.chat.id, user_successful_payment_msg_id)
@@ -176,13 +156,16 @@ def handle_inline_callback(call):
                             types.InlineKeyboardButton('FAQ.', callback_data='faq'),
                             types.InlineKeyboardButton('О нас.', callback_data='about'),
                             types.InlineKeyboardButton('Корзина', callback_data='basket'))
-            
+
             if call.message.chat.id == Config.admin_chat_id:
                 admin = types.InlineKeyboardButton('Админка', callback_data='admin')
                 back_markup.add(admin)
-            
-            photo_path = 'static/welcome_img.png'
-            bot.edit_message_media(chat_id=call.message.chat.id, message_id=last_message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=f'Привет! {call.from_user.first_name}, Что вас интересует?'), reply_markup=back_markup)
+
+            photo_path = '../static/welcome_img.png'
+            bot.edit_message_media(chat_id=call.message.chat.id, message_id=last_message_id,
+                                   media=InputMediaPhoto(open(photo_path, 'rb'),
+                                                         caption=f'Привет! {call.from_user.first_name}, Что вас интересует?'),
+                                   reply_markup=back_markup)
             return
 
     else:
@@ -198,8 +181,10 @@ def admin_panel(message):
     view_orders_button = types.InlineKeyboardButton('Просмотр заказов', callback_data='view_orders')
     back_button = types.InlineKeyboardButton('Назад', callback_data='back')
     markup.add(view_orders_button, back_button)
-    photo_path = 'static/welcome_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Админ меню'), reply_markup=markup)
+    photo_path = '../static/welcome_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='Админ меню'), reply_markup=markup)
+
 
 def view_orders(message):
     global admin_orders_msg_id
@@ -230,15 +215,19 @@ def view_orders(message):
         send_message = bot.send_message(message.chat.id, admin_orders_msg, reply_markup=markup)
         admin_orders_msg_id = send_message.message_id
 
+
 def add_to_cart(call):
     user_basket[call.data] = Config.all_items.get(call.data)
+
 
 def clear_basket():
     user_basket.clear()
 
+
 def calculate_total():
     total = sum(Config.all_items[item] for item in user_basket)
     return total
+
 
 def show_basket(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -246,8 +235,10 @@ def show_basket(message):
     if not user_basket:
         back = types.InlineKeyboardButton('Назад', callback_data='back')
         markup.add(back)
-        photo_path = 'static/cart_img.png'
-        bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Ваша корзина пуста.'), reply_markup=markup)
+        photo_path = '../static/cart_img.png'
+        bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                               media=InputMediaPhoto(open(photo_path, 'rb'), caption='Ваша корзина пуста.'),
+                               reply_markup=markup)
     else:
         clear = types.InlineKeyboardButton('Очистить корзину', callback_data='clear_basket')
         pay = types.InlineKeyboardButton('Оплатить', callback_data='pay_callback')
@@ -260,8 +251,10 @@ def show_basket(message):
             basket_text += f"{item}: {price}\n"
             total_price += price
         basket_text += f"\nСумма: {total_price} рублей"
-        photo_path = 'static/full_cart_img.png'
-        bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption=basket_text), reply_markup=markup)
+        photo_path = '../static/full_cart_img.png'
+        bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                               media=InputMediaPhoto(open(photo_path, 'rb'), caption=basket_text), reply_markup=markup)
+
 
 def shop(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -269,22 +262,28 @@ def shop(message):
                types.InlineKeyboardButton('VALORANT', callback_data='valorant'),
                types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/shop_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите игру:'), reply_markup=markup)
+    photo_path = '../static/shop_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите игру:'), reply_markup=markup)
+
 
 def FAQ(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/faq_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='FAQ'), reply_markup=markup)
+    photo_path = '../static/faq_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='FAQ'), reply_markup=markup)
+
 
 def about(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/about_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='about'), reply_markup=markup)
+    photo_path = '../static/about_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='about'), reply_markup=markup)
+
 
 def fortnite_shop(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -292,8 +291,11 @@ def fortnite_shop(message):
                types.InlineKeyboardButton('Наборы', callback_data='bundle'),
                types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/fortnite_shop_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите вид товара:'), reply_markup=markup)
+    photo_path = '../static/fortnite_shop_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите вид товара:'),
+                           reply_markup=markup)
+
 
 def vbucks_shop(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -303,8 +305,11 @@ def vbucks_shop(message):
                types.InlineKeyboardButton('13500VB', callback_data='13500VB'),
                types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/vbucks_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'), reply_markup=markup)
+    photo_path = '../static/vbucks_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'),
+                           reply_markup=markup)
+
 
 def fortnite_bundle_shop(message):
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -313,12 +318,16 @@ def fortnite_bundle_shop(message):
                types.InlineKeyboardButton('The Last Laugh', callback_data='TheLastLaugh'),
                types.InlineKeyboardButton('Назад', callback_data='back'))
 
-    photo_path = 'static/fortnite_bundle_img.png'
-    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id, media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'), reply_markup=markup)
+    photo_path = '../static/fortnite_bundle_img.png'
+    bot.edit_message_media(chat_id=message.chat.id, message_id=message.message_id,
+                           media=InputMediaPhoto(open(photo_path, 'rb'), caption='Выберите товар:'),
+                           reply_markup=markup)
+
 
 def clear_after_successful_payment(message):
     clear_basket()
     welcome(message)
+
 
 def dsc_for_payment() -> str:
     basket_text = "\n"
@@ -327,27 +336,30 @@ def dsc_for_payment() -> str:
 
     return basket_text
 
+
 def create_telegram_payment(message):
-    total_price = types.LabeledPrice(label='Оплатить товар(ы)', amount=calculate_total()*100)
-    
+    total_price = types.LabeledPrice(label='Оплатить товар(ы)', amount=calculate_total() * 100)
+
     bot.send_invoice(message.chat.id,
-                    title='xenoqs shop',
-                    description=dsc_for_payment(),
-                    provider_token=Config.payment_provider_token,
-                    prices=[total_price],
-                    invoice_payload="test-invoice-payload",
-                    currency='rub')
+                     title='xenoqs shop',
+                     description=dsc_for_payment(),
+                     provider_token=Config.payment_provider_token,
+                     prices=[total_price],
+                     invoice_payload="test-invoice-payload",
+                     currency='rub')
+
 
 def pay(message):
-
     # Создание платежной ссылки
     create_telegram_payment(message)
 
     last_message_id = message.message_id  # последний айди сообщения
 
+
 @bot.pre_checkout_query_handler(func=lambda query: True)
 def pre_checkout(query: types.PreCheckoutQuery):
     bot.answer_pre_checkout_query(query.id, ok=True)
+
 
 @bot.message_handler(content_types=['successful_payment'])
 def successful_payment(message: types.Message):
@@ -355,7 +367,8 @@ def successful_payment(message: types.Message):
     print('SUCCESSFUL PAYMENT')
 
     # сохр заказ в базе и получение айдишки 
-    order_id = db.save_order(message.from_user.id, message.from_user.username, dsc_for_payment(), calculate_total(), message.successful_payment.currency)
+    order_id = db.save_order(message.from_user.id, message.from_user.username, dsc_for_payment(), calculate_total(),
+                             message.successful_payment.currency)
 
     # Отправка номера заказа и инф в чат с покупатлем
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -371,17 +384,17 @@ def successful_payment(message: types.Message):
     )
     send_message = bot.send_message(message.chat.id, user_message, reply_markup=markup)
     user_successful_payment_msg_id = send_message.message_id
-    
+
     # Получение информации о человеке
     user_id = message.from_user.id
     username = message.from_user.username
-    
+
     # Создание ссылки на профиль пользователя
     if username:
         user_link = f"https://t.me/{username}"
     else:
         user_link = f"https://t.me/user?id={user_id}"
-    
+
     # Отправка сообщения модератору
     total_amount = message.successful_payment.total_amount // 100
     currency = message.successful_payment.currency
@@ -393,5 +406,6 @@ def successful_payment(message: types.Message):
     )
     bot.send_message(Config.admin_chat_id, moderator_message)
     clear_after_successful_payment(message)
+
 
 bot.polling(non_stop=True)
