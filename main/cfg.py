@@ -1,7 +1,7 @@
 # Модуль для параметров
 
 class Config:
-    token = "your-tocken"
+    token = "1566336248:AAEK-uYNTOqtUu5zOZU39Mw6PKK4UBoC_J8"
     payment_provider_token = 'your-payment-tocken'
     admin_chat_id = 'admin-chat-id'
     admin_id = ('admin-id')
